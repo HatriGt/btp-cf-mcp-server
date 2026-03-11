@@ -1,0 +1,241 @@
+{
+  "server": {
+    "name": "odata-mcp-proxy",
+    "version": "1.0.0",
+    "description": "MCP server for the Cloud Foundry V3 API on SAP BTP"
+  },
+  "apis": [
+    {
+      "name": "cf-v3",
+      "destination": "CF_API",
+      "pathPrefix": "/v3",
+      "csrfProtected": false,
+      "entitySets": [
+        {
+          "entitySet": "Apps",
+          "urlPath": "apps",
+          "description": "Cloud Foundry applications — deploy, manage, start, and stop apps. Use path /<guid>/actions/start (POST) or /actions/stop to control app state. Supports filtering by names, space_guids, organization_guids, stacks. Pagination via page and per_page query params",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "Builds",
+          "urlPath": "builds",
+          "description": "Cloud Foundry application builds — staging a package into a droplet. Create a build to stage an app package",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": false, "delete": false }
+        },
+        {
+          "entitySet": "Deployments",
+          "urlPath": "deployments",
+          "description": "Cloud Foundry app deployments — rolling deployments and canary releases. Use POST /<guid>/actions/cancel to cancel an in-progress deployment",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": false, "delete": false }
+        },
+        {
+          "entitySet": "Droplets",
+          "urlPath": "droplets",
+          "description": "Cloud Foundry droplets — the staged, runnable artifacts produced from builds. Filter by app_guids, states, current",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": false, "update": false, "delete": true }
+        },
+        {
+          "entitySet": "Packages",
+          "urlPath": "packages",
+          "description": "Cloud Foundry packages — application source code or Docker images uploaded for staging. Filter by app_guids, states, types",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": false, "delete": true }
+        },
+        {
+          "entitySet": "Processes",
+          "urlPath": "processes",
+          "description": "Cloud Foundry processes — running instances of an app (web, worker, etc.). Use POST /<guid>/actions/scale to scale instances, memory, or disk. Filter by app_guids, space_guids, types",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": false, "update": true, "delete": false }
+        },
+        {
+          "entitySet": "Tasks",
+          "urlPath": "tasks",
+          "description": "Cloud Foundry tasks — one-off processes (e.g. database migrations, batch jobs) that run to completion. Use POST /<guid>/actions/cancel to cancel a running task. Filter by app_guids, names, states",
+          "category": "apps-and-processes",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": false, "delete": false }
+        },
+        {
+          "entitySet": "Organizations",
+          "urlPath": "organizations",
+          "description": "Cloud Foundry organizations — top-level containers for spaces, apps, and users. Filter by names, guids",
+          "category": "orgs-and-spaces",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "Spaces",
+          "urlPath": "spaces",
+          "description": "Cloud Foundry spaces — subdivisions within an org where apps and services are deployed. Filter by names, organization_guids, guids",
+          "category": "orgs-and-spaces",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "Roles",
+          "urlPath": "roles",
+          "description": "Cloud Foundry roles — user role assignments in orgs and spaces (e.g. OrgManager, SpaceDeveloper). Filter by types, user_guids, organization_guids, space_guids",
+          "category": "orgs-and-spaces",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": false, "delete": true }
+        },
+        {
+          "entitySet": "Users",
+          "urlPath": "users",
+          "description": "Cloud Foundry users — user accounts associated with the CF deployment. Filter by guids, usernames, origins",
+          "category": "orgs-and-spaces",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "ServiceInstances",
+          "urlPath": "service_instances",
+          "description": "Cloud Foundry service instances — provisioned instances of marketplace services (databases, message queues, etc.). Filter by names, space_guids, service_plan_guids, type",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "ServiceCredentialBindings",
+          "urlPath": "service_credential_bindings",
+          "description": "Cloud Foundry service credential bindings — service keys and app bindings that provide credentials to access a service instance. Filter by service_instance_guids, app_guids, type (app or key)",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "ServiceOfferings",
+          "urlPath": "service_offerings",
+          "description": "Cloud Foundry service offerings — the services available in the marketplace from registered service brokers. Filter by names, service_broker_guids, available",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": false, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "ServicePlans",
+          "urlPath": "service_plans",
+          "description": "Cloud Foundry service plans — the pricing/feature tiers available for each service offering. Filter by names, service_offering_guids, available, service_broker_guids",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": false, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "ServiceBrokers",
+          "urlPath": "service_brokers",
+          "description": "Cloud Foundry service brokers — the broker applications that advertise and provision service instances. Filter by names, space_guids",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "ServiceRouteBindings",
+          "urlPath": "service_route_bindings",
+          "description": "Cloud Foundry service route bindings — bind a service instance to a route for route-level request interception. Filter by service_instance_guids, route_guids",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": false, "delete": true }
+        },
+        {
+          "entitySet": "ServiceUsageEvents",
+          "urlPath": "service_usage_events",
+          "description": "Cloud Foundry service usage events — historical record of service instance create/delete events for billing and auditing. Filter by service_instance_types, service_offering_guids",
+          "category": "services",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": false, "update": false, "delete": false }
+        },
+        {
+          "entitySet": "Domains",
+          "urlPath": "domains",
+          "description": "Cloud Foundry domains — shared or private domain names used to create routes (e.g. cfapps.eu10.hana.ondemand.com). Filter by names, organization_guids",
+          "category": "networking",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "Routes",
+          "urlPath": "routes",
+          "description": "Cloud Foundry routes — URL mappings that direct traffic to apps. Filter by hosts, paths, domain_guids, space_guids, organization_guids",
+          "category": "networking",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "SecurityGroups",
+          "urlPath": "security_groups",
+          "description": "Cloud Foundry security groups — egress firewall rules controlling which external endpoints apps can reach. Filter by names, guids, globally_enabled_running, globally_enabled_staging",
+          "category": "networking",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "Buildpacks",
+          "urlPath": "buildpacks",
+          "description": "Cloud Foundry buildpacks — the runtimes and frameworks used to stage applications (e.g. java_buildpack, nodejs_buildpack). Filter by names, stacks",
+          "category": "platform",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "FeatureFlags",
+          "urlPath": "feature_flags",
+          "description": "Cloud Foundry feature flags — platform-level toggles that enable/disable CF features (e.g. user_org_creation, diego_docker). Use path /<flag_name> to get/update a specific flag",
+          "category": "platform",
+          "keys": [{ "name": "name", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": false, "update": true, "delete": false }
+        },
+        {
+          "entitySet": "Stacks",
+          "urlPath": "stacks",
+          "description": "Cloud Foundry stacks — the root filesystems (OS base images) used to run applications (e.g. cflinuxfs4). Filter by names",
+          "category": "platform",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "IsolationSegments",
+          "urlPath": "isolation_segments",
+          "description": "Cloud Foundry isolation segments — dedicated compute pools for running apps in isolated Diego cells. Filter by names, guids, organization_guids",
+          "category": "platform",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "Jobs",
+          "urlPath": "jobs",
+          "description": "Cloud Foundry async jobs — track the status of long-running operations (e.g. app delete, space delete). Poll by GUID until state is COMPLETE or FAILED",
+          "category": "platform",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": false, "get": true, "create": false, "update": false, "delete": false }
+        },
+        {
+          "entitySet": "OrganizationQuotas",
+          "urlPath": "organization_quotas",
+          "description": "Cloud Foundry organization quotas — resource limits (memory, instances, routes, services) applied to orgs. Filter by names, guids, organization_guids",
+          "category": "quotas",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        },
+        {
+          "entitySet": "SpaceQuotas",
+          "urlPath": "space_quotas",
+          "description": "Cloud Foundry space quotas — resource limits applied to individual spaces within an org. Filter by names, guids, organization_guids, space_guids",
+          "category": "quotas",
+          "keys": [{ "name": "guid", "type": "string" }],
+          "operations": { "list": true, "get": true, "create": true, "update": true, "delete": true }
+        }
+      ]
+    }
+  ]
+}
