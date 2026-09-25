@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "odata-mcp-proxy --config btp-cf-api-config.json",
+    "start:stdio": "node stdio.mjs",
     "build:btp": "mbt build",
     "deploy:btp": "cf deploy mta_archives/btp-cf-mcp-server_1.0.0.mtar"
   },
@@ -13,5 +14,8 @@
   "license": "ISC",
   "dependencies": {
     "odata-mcp-proxy": "^1.0.0"
+  },
+  "bin": {
+    "btp-cf-mcp-server": "stdio.mjs"
   }
 }
