@@ -1,21 +1,45 @@
 {
   "name": "btp-cf-mcp-server",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "MCP server for the Cloud Foundry V3 API on SAP BTP. Runs locally over stdio using your cf CLI login, or hosted on BTP.",
+  "type": "module",
+  "bin": {
+    "btp-cf-mcp-server": "stdio.mjs"
+  },
+  "files": [
+    "stdio.mjs",
+    "btp-cf-api-config.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "odata-mcp-proxy --config btp-cf-api-config.json",
     "start:stdio": "node stdio.mjs",
     "build:btp": "mbt build",
     "deploy:btp": "cf deploy mta_archives/btp-cf-mcp-server_1.0.0.mtar"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "odata-mcp-proxy": "^1.0.0"
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sap",
+    "btp",
+    "cloud-foundry",
+    "cf",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HatriGt/btp-cf-mcp-server.git"
   },
-  "bin": {
-    "btp-cf-mcp-server": "stdio.mjs"
+  "homepage": "https://github.com/HatriGt/btp-cf-mcp-server#readme",
+  "bugs": {
+    "url": "https://github.com/HatriGt/btp-cf-mcp-server/issues"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "odata-mcp-proxy": "^1.3.0"
   }
 }

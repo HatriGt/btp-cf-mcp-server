@@ -193,4 +193,5 @@ try {
 process.env.MCP_TRANSPORT = 'stdio';
 process.env.API_CONFIG_FILE ||= join(here, 'btp-cf-api-config.json');
 
-await import('odata-mcp-proxy/dist/index.js');
+const { start } = await import('odata-mcp-proxy');
+await start();

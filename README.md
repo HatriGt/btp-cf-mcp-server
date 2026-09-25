@@ -4,6 +4,89 @@ An MCP (Model Context Protocol) server for the Cloud Foundry V3 API on SAP BTP, 
 
 The entire server is defined through a single JSON config file -- no custom code required.
 
+## Quick Start (local, stdio)
+
+You don't need a BTP deployment. Your MCP client runs the server from npm as a
+local process, and it signs in to Cloud Foundry with your `cf` CLI login.
+
+**Requires:** Node.js 20+ and the [cf CLI](https://github.com/cloudfoundry/cli).
+
+1. Log in to Cloud Foundry once. The server refreshes the token after that.
+
+   ```bash
+   cf login -a https://api.cf.eu10.hana.ondemand.com --sso
+   ```
+
+2. Add the server to your MCP client.
+
+   **Claude Code**
+
+   ```bash
+   claude mcp add btp-cf -- npx -y btp-cf-mcp-server
+   ```
+
+   **Claude Desktop** (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and similar clients:
+
+   ```json
+   {
+     "mcpServers": {
+       "btp-cf": {
+         "command": "npx",
+         "args": ["-y", "btp-cf-mcp-server"],
+         "env": { "LOG_LEVEL": "warn" }
+       }
+     }
+   }
+   ```
+
+   On macOS, Claude Desktop doesn't inherit your shell `PATH`. If it reports that
+   `npx` or `cf` isn't found, use the full path to `npx` as `command` and add
+   `"CF_CLI_PATH": "/opt/homebrew/bin/cf"` (from `which cf`) to `env`.
+
+The tools act with the permissions of the CF user who is logged in.
+
+### Authentication modes
+
+Choose a mode with `CF_AUTH_MODE`:
+
+| Mode | How it authenticates | Needs |
+|------|----------------------|-------|
+| `cli` (default) | Reuses your `cf login` session through `cf oauth-token` (works with `--sso`) | `cf` CLI logged in; the API endpoint comes from `cf target` unless `CF_API_URL` is set |
+| `password` | OAuth2 password grant against CF UAA, using the public `cf` client | `CF_API_URL`, `CF_USERNAME`, `CF_PASSWORD` (a user without 2FA, such as a technical user) |
+| `destination` | BTP Destination service, as in the hosted setup | a `default-env.json` with the service bindings in the package directory |
+
+Example for password mode:
+
+```json
+"env": {
+  "CF_AUTH_MODE": "password",
+  "CF_API_URL": "https://api.cf.eu10.hana.ondemand.com",
+  "CF_USERNAME": "tech-user@example.com",
+  "CF_PASSWORD": "..."
+}
+```
+
+Other optional variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `ENABLED_API_CATEGORIES` | Load only some tool categories, e.g. `apps-and-processes,orgs-and-spaces` (also: `services`, `networking`, `platform`, `quotas`) |
+| `CF_API_URL` | Override the CF API endpoint |
+| `CF_HOME` | Use a different cf CLI home directory |
+| `CF_CLI_PATH` | Path to the `cf` binary |
+| `LOG_LEVEL` | `error`, `warn`, `info` (default) or `debug`; logs go to stderr |
+| `REQUEST_TIMEOUT` | Request timeout in ms (default 60000) |
+
+### How the stdio launcher works
+
+The package's `stdio.mjs`:
+- starts `odata-mcp-proxy` with the stdio transport and sends all logs to stderr, so stdout carries only JSON-RPC
+- loads the bundled `btp-cf-api-config.json`, whatever directory the client starts it from
+- gets a CF UAA user token and gives it to the proxy as an SAP Cloud SDK environment destination, refreshing it before it expires
+
+To run it from a clone instead of npm, use `npm install` and then `npm run start:stdio`,
+or point your client at `node /absolute/path/to/stdio.mjs`.
+
 ## How It Works
 
 This project uses the `odata-mcp-proxy` npm package, which maps OData/REST services to MCP tools based on a configuration file. You provide a config describing your APIs and entity sets, and the proxy generates the corresponding MCP tools automatically.
@@ -98,6 +181,7 @@ All `_list` tools support query parameters for filtering and pagination (`page`,
 ```
 btp-cf-mcp-server/
 ├── package.json              # Start script + odata-mcp-proxy dependency
+├── stdio.mjs                 # Local stdio launcher (npm bin: btp-cf-mcp-server)
 ├── btp-cf-api-config.json    # API configuration (defines all MCP tools)
 ├── mta.yaml                  # BTP Cloud Foundry deployment descriptor
 ├── xs-security.json          # XSUAA OAuth2 configuration
@@ -133,73 +217,7 @@ npm start
 
 This runs `odata-mcp-proxy --config btp-cf-api-config.json`.
 
-### 4. Run locally over stdio (no hosting)
-
-Instead of deploying to BTP, you can let your MCP client spawn the server as a
-local process. `stdio.mjs` wraps `odata-mcp-proxy` for this:
-
-- forces the stdio transport and sends all logs to stderr, so stdout carries only JSON-RPC
-- finds `btp-cf-api-config.json` next to itself, whatever the client's working directory
-- gets a Cloud Foundry UAA user token locally and refreshes it before it expires, so no BTP Destination, XSUAA or Connectivity service is needed
-
-Pick an auth mode with `CF_AUTH_MODE`:
-
-| Mode | How it authenticates | Needs |
-|------|----------------------|-------|
-| `cli` (default) | Reuses your `cf login` session via `cf oauth-token` (works with `cf login --sso`) | `cf` CLI logged in; API endpoint taken from `cf target` unless `CF_API_URL` is set |
-| `password` | OAuth2 password grant against CF UAA (public `cf` client) | `CF_API_URL`, `CF_USERNAME`, `CF_PASSWORD` (user without 2FA) |
-| `destination` | Uses the BTP Destination service like the hosted app | `default-env.json` next to `stdio.mjs` with the service bindings |
-
-Log in once and check it works:
-
-```bash
-npm install
-cf login -a https://api.cf.eu10.hana.ondemand.com --sso
-npm run start:stdio   # waits for JSON-RPC on stdin; Ctrl+C to exit
-```
-
-**Claude Desktop** (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "btp-cf": {
-      "command": "node",
-      "args": ["/absolute/path/to/btp-cf-mcp-server/stdio.mjs"],
-      "env": {
-        "LOG_LEVEL": "warn"
-      }
-    }
-  }
-}
-```
-
-Claude Desktop does not inherit your shell `PATH` on macOS. If it can't find `cf`,
-add `"CF_CLI_PATH": "/opt/homebrew/bin/cf"` (from `which cf`) to `env`.
-
-**Claude Code**:
-
-```bash
-claude mcp add btp-cf -- node /absolute/path/to/btp-cf-mcp-server/stdio.mjs
-```
-
-**Password mode** (for example, a technical user):
-
-```json
-"env": {
-  "CF_AUTH_MODE": "password",
-  "CF_API_URL": "https://api.cf.eu10.hana.ondemand.com",
-  "CF_USERNAME": "tech-user@example.com",
-  "CF_PASSWORD": "..."
-}
-```
-
-Other optional variables: `ENABLED_API_CATEGORIES` (for example, `apps-and-processes,orgs-and-spaces`),
-`REQUEST_TIMEOUT`, `LOG_LEVEL`, `CF_HOME`.
-
-The MCP tools act with the permissions of the CF user whose token is used.
-
-### 5. Deploy to BTP
+### 4. Deploy to BTP
 
 ```bash
 npm run build:btp     # Build MTA archive
