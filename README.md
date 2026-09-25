@@ -1,6 +1,6 @@
-# BTP CF MCP Server
+# BTP MCP Server
 
-[![npm version](https://img.shields.io/npm/v/btp-cf-mcp-server.svg)](https://www.npmjs.com/package/btp-cf-mcp-server)
+[![npm version](https://img.shields.io/npm/v/btp-mcp-server.svg)](https://www.npmjs.com/package/btp-mcp-server)
 [![CI](https://github.com/HatriGt/btp-cf-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/HatriGt/btp-cf-mcp-server/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -69,7 +69,7 @@ cf target -o <org> -s <space>     # optional: sets the default space for app nam
 **2. Add the server to your MCP client.** For example, in Claude Code:
 
 ```bash
-claude mcp add btp-cf -- npx -y btp-cf-mcp-server
+claude mcp add btp-cf -- npx -y btp-mcp-server
 ```
 
 **3. Ask a question.** For example: *"List the apps in my space and their state"* or *"Which service instances
@@ -77,17 +77,17 @@ have no bindings?"*
 
 ## Client setup
 
-All clients start the server the same way: the command `npx -y btp-cf-mcp-server`, with optional
+All clients start the server the same way: the command `npx -y btp-mcp-server`, with optional
 [environment variables](#configuration-reference).
 
 <details open>
 <summary><b>Claude Code</b></summary>
 
 ```bash
-claude mcp add btp-cf -- npx -y btp-cf-mcp-server
+claude mcp add btp-cf -- npx -y btp-mcp-server
 
 # with options
-claude mcp add btp-cf -e CF_TOOLS=all -- npx -y btp-cf-mcp-server
+claude mcp add btp-cf -e CF_TOOLS=all -- npx -y btp-mcp-server
 ```
 
 </details>
@@ -102,7 +102,7 @@ Edit `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
   "mcpServers": {
     "btp-cf": {
       "command": "npx",
-      "args": ["-y", "btp-cf-mcp-server"]
+      "args": ["-y", "btp-mcp-server"]
     }
   }
 }
@@ -123,7 +123,7 @@ Add to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per project):
   "mcpServers": {
     "btp-cf": {
       "command": "npx",
-      "args": ["-y", "btp-cf-mcp-server"]
+      "args": ["-y", "btp-mcp-server"]
     }
   }
 }
@@ -142,7 +142,7 @@ Add to `.vscode/mcp.json`:
     "btp-cf": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "btp-cf-mcp-server"]
+      "args": ["-y", "btp-mcp-server"]
     }
   }
 }
@@ -156,8 +156,8 @@ Add to `.vscode/mcp.json`:
 `npx` checks the registry on each launch. For the fastest startup, install globally and use the binary directly:
 
 ```bash
-npm install -g btp-cf-mcp-server
-claude mcp add btp-cf -- btp-cf-mcp-server
+npm install -g btp-mcp-server
+claude mcp add btp-cf -- btp-mcp-server
 ```
 
 </details>
@@ -261,7 +261,7 @@ All settings are environment variables.
 
 ```text
 ┌────────────────┐  stdio (JSON-RPC)  ┌──────────────────────────────────────────┐  HTTPS  ┌──────────────────┐
-│   MCP client   │ ◄────────────────► │ btp-cf-mcp-server                        │ ──────► │ CF V3 API        │
+│   MCP client   │ ◄────────────────► │ btp-mcp-server                        │ ──────► │ CF V3 API        │
 │ Claude, Cursor │                    │  ├ odata-mcp-proxy  (tools, discovery)   │         │ log-cache        │
 └────────────────┘                    │  ├ CF client  (keep-alive, retries,      │         └──────────────────┘
                                       │  │             errors, compaction)       │  token  ┌──────────────────┐
@@ -327,7 +327,7 @@ discovery mode and the CF client, apply to local use.
 | `cf oauth-token failed … Run cf login` | Your CLI session expired. Run `cf login` again |
 | `No app named "x" in space …` | Target the right space with `cf target -s <space>`, or pass `space_guid` |
 | The client doesn't list the tools you expect | Check `CF_TOOLS`. In the default hybrid mode, less-used resources are reached through `search_operations` / `execute_operation` |
-| The server doesn't start in the client | Run `npx -y btp-cf-mcp-server` in a terminal. Startup errors are printed to stderr |
+| The server doesn't start in the client | Run `npx -y btp-mcp-server` in a terminal. Startup errors are printed to stderr |
 | You need more detail | Set `LOG_LEVEL=debug` and check the client's MCP log |
 
 ## Development
@@ -344,7 +344,7 @@ To use your local checkout in a client, point it at `node /absolute/path/to/btp-
 
 ```text
 btp-cf-mcp-server/
-├── stdio.mjs                 # stdio entry point (npm bin: btp-cf-mcp-server)
+├── stdio.mjs                 # stdio entry point (npm bin: btp-mcp-server)
 ├── lib/
 │   ├── auth.mjs              # UAA token provider
 │   ├── cf-client.mjs         # CF V3 HTTP client

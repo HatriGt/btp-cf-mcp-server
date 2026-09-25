@@ -1,6 +1,6 @@
 {
   "server": {
-    "name": "btp-cf-mcp-server",
+    "name": "btp-mcp-server",
     "version": "1.0.0",
     "description": "MCP server for the Cloud Foundry V3 API on SAP BTP"
   },

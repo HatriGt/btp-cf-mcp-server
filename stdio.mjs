@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-// btp-cf-mcp-server — local stdio entry point
+// btp-mcp-server — local stdio entry point
 //
 // Runs odata-mcp-proxy with the stdio transport so MCP clients (Claude Code,
 // Claude Desktop, Cursor, ...) can spawn it as a local process, and adds what
@@ -31,7 +31,7 @@ console.info = console.error;
 console.debug = console.error;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const log = (msg) => process.stderr.write(`[btp-cf-mcp-server] ${msg}\n`);
+const log = (msg) => process.stderr.write(`[btp-mcp-server] ${msg}\n`);
 const DESTINATION_NAME = 'CF_API';
 const DEFAULT_PINNED = ['Apps', 'Processes', 'Spaces', 'Organizations', 'ServiceInstances', 'Routes'];
 
@@ -75,7 +75,7 @@ if (toolMode === 'all') {
         ? process.env.CF_PINNED_TOOLS.split(',').map((s) => s.trim()).filter(Boolean)
         : DEFAULT_PINNED.filter((name) => known.has(name));
     apiConfig.discovery ??= toolMode === 'hybrid' ? { mode: 'hybrid', alwaysRegister: pinned } : { mode: 'search' };
-    const derived = join(tmpdir(), `btp-cf-mcp-server-${process.pid}.json`);
+    const derived = join(tmpdir(), `btp-mcp-server-${process.pid}.json`);
     writeFileSync(derived, JSON.stringify(apiConfig));
     process.on('exit', () => {
         try { unlinkSync(derived); } catch { /* already gone */ }

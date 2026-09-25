@@ -88,7 +88,7 @@ class McpProcess {
     }
 }
 
-describe('btp-cf-mcp-server (cli auth mode)', () => {
+describe('btp-mcp-server (cli auth mode)', () => {
     let mock;
     let dir;
     let cfMarker;
@@ -126,7 +126,7 @@ describe('btp-cf-mcp-server (cli auth mode)', () => {
 
         test('initializes without spawning the cf CLI when the cached token is valid', async () => {
             const res = await server.initialize();
-            assert.equal(res.result.serverInfo.name, 'btp-cf-mcp-server');
+            assert.equal(res.result.serverInfo.name, 'btp-mcp-server');
             assert.equal(existsSync(cfMarker), false, 'cf CLI should not be called at startup');
         });
 

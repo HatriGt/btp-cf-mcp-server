@@ -1,10 +1,10 @@
 {
-  "name": "btp-cf-mcp-server",
+  "name": "btp-mcp-server",
   "version": "1.0.0",
   "description": "MCP server for the Cloud Foundry V3 API on SAP BTP. Runs locally over stdio using your cf CLI login, or hosted on BTP.",
   "type": "module",
   "bin": {
-    "btp-cf-mcp-server": "stdio.mjs"
+    "btp-mcp-server": "stdio.mjs"
   },
   "files": [
     "stdio.mjs",
