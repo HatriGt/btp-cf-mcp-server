@@ -76,6 +76,33 @@ Other optional variables:
 | `CF_CLI_PATH` | Path to the `cf` binary |
 | `LOG_LEVEL` | `error`, `warn`, `info` (default) or `debug`; logs go to stderr |
 | `REQUEST_TIMEOUT` | Request timeout in ms (default 60000) |
+| `CF_TOOLS` | Tool surface: `hybrid` (default), `search` or `all`; see [Tool modes](#tool-modes) |
+| `CF_PINNED_TOOLS` | Entity sets kept as individual tools in hybrid mode (default: `Apps,Processes,Spaces,Organizations,ServiceInstances,Routes`) |
+
+### Tool modes
+
+If every CF operation were its own tool, you'd get about 116 tools. That uses a lot of
+context and goes over the tool limit of some clients, such as Cursor's ~40. The stdio
+launcher therefore uses the proxy's progressive tool discovery by default:
+
+| `CF_TOOLS` | What gets registered | Tools |
+|------------|----------------------|-------|
+| `hybrid` (default) | Individual tools for the most used entity sets, plus `search_operations` / `execute_operation` for everything else | 33 |
+| `search` | Only the meta-tools and the CF tools below | 5 |
+| `all` | Every operation as its own tool | 119 |
+
+The model uses `search_operations` to find an entity set (for example "service keys"
+or "quotas") and `execute_operation` to call it.
+
+### Cloud Foundry tools
+
+Besides the generic API tools, the stdio launcher adds these tools:
+
+| Tool | What it does |
+|------|--------------|
+| `CF_Target` | The CF API endpoint, the logged-in user, and the org and space targeted with `cf target` (with GUIDs), so "my apps" can be resolved without extra lookups |
+| `CF_AppAction` | Start, stop or restart an app by GUID |
+| `CF_AppRecentLogs` | Recent app logs from log-cache, like `cf logs --recent`, optionally stderr only. Not available in `destination` mode |
 
 ### How the stdio launcher works
 
@@ -83,6 +110,7 @@ The package's `stdio.mjs`:
 - starts `odata-mcp-proxy` with the stdio transport and sends all logs to stderr, so stdout carries only JSON-RPC
 - loads the bundled `btp-cf-api-config.json`, whatever directory the client starts it from
 - gets a CF UAA user token and gives it to the proxy as an SAP Cloud SDK environment destination, refreshing it before it expires
+- enables progressive tool discovery and registers the Cloud Foundry tools above
 
 To run it from a clone instead of npm, use `npm install` and then `npm run start:stdio`,
 or point your client at `node /absolute/path/to/stdio.mjs`.

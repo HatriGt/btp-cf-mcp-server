@@ -27,20 +27,30 @@
 //                     (cli mode defaults to the target of the cf CLI)
 //   CF_HOME         - cf CLI home directory (passed through to `cf`)
 //   CF_CLI_PATH     - path to the cf binary (default: "cf" from PATH)
+//   CF_TOOLS        - tool surface: "hybrid" (default) registers individual
+//                     tools only for the most used entity sets plus the
+//                     search_operations / execute_operation meta-tools;
+//                     "search" registers only the meta-tools; "all" registers
+//                     every operation as its own tool (~116 tools)
+//   CF_PINNED_TOOLS - comma-separated entity sets kept as individual tools in
+//                     hybrid mode (default: Apps,Processes,Spaces,
+//                     Organizations,ServiceInstances,Routes)
 //   LOG_LEVEL, ENABLED_API_CATEGORIES, REQUEST_TIMEOUT - see odata-mcp-proxy
 // =============================================================================
 import { execFile } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { z } from 'zod';
 
 const execFileAsync = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const DESTINATION_NAME = 'CF_API';
 // Refresh the token this many seconds before it expires
 const REFRESH_MARGIN_SECONDS = 120;
+const DEFAULT_PINNED = ['Apps', 'Processes', 'Spaces', 'Organizations', 'ServiceInstances', 'Routes'];
 
 // ── 1. stdout belongs to JSON-RPC ───────────────────────────────────────────
 // winston's Console transport writes to console._stdout; point it (and any
@@ -55,22 +65,26 @@ const log = (msg) => process.stderr.write(`[stdio-launcher] ${msg}\n`);
 
 // ── 2. Token helpers ────────────────────────────────────────────────────────
 function decodeJwtExp(token) {
+    const { exp } = decodeJwtPayload(token);
+    return typeof exp === 'number' ? exp : undefined;
+}
+
+function decodeJwtPayload(token) {
     try {
-        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf-8'));
-        return typeof payload.exp === 'number' ? payload.exp : undefined;
+        return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf-8'));
     } catch {
-        return undefined;
+        return {};
     }
 }
 
-function readCfCliTarget() {
+function readCfCliConfig() {
     const cfHome = process.env.CF_HOME || homedir();
     const configPath = join(cfHome, '.cf', 'config.json');
-    if (!existsSync(configPath)) return undefined;
+    if (!existsSync(configPath)) return {};
     try {
-        return JSON.parse(readFileSync(configPath, 'utf-8')).Target || undefined;
+        return JSON.parse(readFileSync(configPath, 'utf-8'));
     } catch {
-        return undefined;
+        return {};
     }
 }
 
@@ -132,7 +146,13 @@ async function tokenFromPasswordGrant(apiUrl) {
 }
 
 // ── 3. Inject the token as an SAP Cloud SDK environment destination ─────────
+// Latest token, also used by the extra tools that call CF endpoints outside
+// the /v3 API (e.g. log-cache).
+const session = { apiUrl: undefined, accessToken: undefined };
+
 function publishDestination(apiUrl, accessToken) {
+    session.apiUrl = apiUrl;
+    session.accessToken = accessToken;
     process.env.destinations = JSON.stringify([
         {
             name: DESTINATION_NAME,
@@ -168,7 +188,7 @@ try {
         // default-env.json and .env are loaded from the working directory
         process.chdir(here);
     } else {
-        const apiUrl = (process.env.CF_API_URL || (mode === 'cli' ? readCfCliTarget() : undefined))?.replace(/\/+$/, '');
+        const apiUrl = (process.env.CF_API_URL || (mode === 'cli' ? readCfCliConfig().Target : undefined))?.replace(/\/+$/, '');
         if (!apiUrl) {
             throw new Error('CF API endpoint unknown. Set CF_API_URL (e.g. https://api.cf.eu10.hana.ondemand.com) or run `cf login`.');
         }
@@ -190,8 +210,143 @@ try {
     process.exit(1);
 }
 
+
+// ── 5. Tool surface (progressive discovery) ─────────────────────────────────
+// Registering every operation as its own tool produces ~116 tools, which costs
+// context and exceeds the tool limit of some clients. odata-mcp-proxy's
+// discovery mode collapses them into search_operations / execute_operation.
+const baseConfigFile = process.env.API_CONFIG_FILE || join(here, 'btp-cf-api-config.json');
+const toolMode = (process.env.CF_TOOLS || 'hybrid').toLowerCase();
+
+if (toolMode === 'all') {
+    process.env.API_CONFIG_FILE = baseConfigFile;
+} else if (toolMode === 'hybrid' || toolMode === 'search') {
+    const apiConfig = JSON.parse(readFileSync(baseConfigFile, 'utf-8'));
+    const known = new Set(apiConfig.apis.flatMap((api) => api.entitySets.map((e) => e.entitySet)));
+    const pinned = process.env.CF_PINNED_TOOLS
+        ? process.env.CF_PINNED_TOOLS.split(',').map((s) => s.trim()).filter(Boolean)
+        : DEFAULT_PINNED.filter((name) => known.has(name));
+    apiConfig.discovery ??= toolMode === 'hybrid' ? { mode: 'hybrid', alwaysRegister: pinned } : { mode: 'search' };
+    const derived = join(tmpdir(), `btp-cf-mcp-server-${process.pid}.json`);
+    writeFileSync(derived, JSON.stringify(apiConfig));
+    process.on('exit', () => {
+        try { unlinkSync(derived); } catch { /* already gone */ }
+    });
+    process.env.API_CONFIG_FILE = derived;
+} else {
+    log(`Unknown CF_TOOLS "${toolMode}" (expected hybrid, search or all).`);
+    process.exit(1);
+}
+
 process.env.MCP_TRANSPORT = 'stdio';
-process.env.API_CONFIG_FILE ||= join(here, 'btp-cf-api-config.json');
+
+// The SAP Cloud SDK logs every destination lookup at info level; keep it quiet
+// unless debugging.
+try {
+    const { setGlobalLogLevel } = await import('@sap-cloud-sdk/util');
+    setGlobalLogLevel(process.env.LOG_LEVEL === 'debug' ? 'info' : 'warn');
+} catch {
+    // optional
+}
+
+// ── 6. Cloud Foundry specific tools ─────────────────────────────────────────
+const text = (value) => ({
+    content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
+});
+const fail = (error) => ({ isError: true, ...text(error instanceof Error ? error.message : String(error)) });
+
+async function cfRoot() {
+    const res = await fetch(`${session.apiUrl}/`, { headers: { accept: 'application/json' } });
+    if (!res.ok) throw new Error(`GET ${session.apiUrl}/ failed: ${res.status}`);
+    return (await res.json()).links ?? {};
+}
+
+function registerExtras(server, ctx) {
+    const cf = ctx.clientsByApi['cf-v3'];
+
+    server.registerTool('CF_Target', {
+        description: 'Show who and where you are in Cloud Foundry: the CF API endpoint, the logged-in user, ' +
+            'and the org/space currently targeted with the cf CLI (with GUIDs, ready to use as space_guids / ' +
+            'organization_guids filters). Call this first when the user refers to "my apps" or "this space".',
+        inputSchema: {},
+        annotations: { readOnlyHint: true },
+    }, async () => {
+        try {
+            const claims = session.accessToken ? decodeJwtPayload(session.accessToken) : {};
+            const cli = mode === 'cli' ? readCfCliConfig() : {};
+            const field = (f) => (f?.GUID ? { name: f.Name, guid: f.GUID } : null);
+            return text({
+                api: session.apiUrl ?? '(resolved via BTP Destination service)',
+                authMode: mode,
+                user: claims.user_name
+                    ? { name: claims.user_name, email: claims.email, origin: claims.origin, guid: claims.user_id }
+                    : null,
+                tokenExpiresAt: claims.exp ? new Date(claims.exp * 1000).toISOString() : null,
+                targetedOrganization: field(cli.OrganizationFields),
+                targetedSpace: field(cli.SpaceFields),
+            });
+        } catch (error) {
+            return fail(error);
+        }
+    });
+
+    if (cf) {
+        server.registerTool('CF_AppAction', {
+            description: 'Start, stop or restart a Cloud Foundry app by GUID (POST /v3/apps/<guid>/actions/<action>). ' +
+                'Stopping or restarting interrupts the running app. Look up the GUID with Apps_list ' +
+                "(path '?names=<app-name>&space_guids=<space-guid>').",
+            inputSchema: {
+                app_guid: z.string().min(1).describe('GUID of the app'),
+                action: z.enum(['start', 'stop', 'restart']).describe('Lifecycle action'),
+            },
+            annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
+        }, async ({ app_guid, action }, extra) => {
+            try {
+                const app = await cf.execute('POST', `apps/${encodeURIComponent(app_guid)}/actions/${action}`,
+                    undefined, undefined, extra.authInfo?.token);
+                return text({ guid: app?.guid ?? app_guid, name: app?.name, state: app?.state });
+            } catch (error) {
+                return fail(error);
+            }
+        });
+    }
+
+    // Log-cache lives outside the /v3 API, so it needs the raw token.
+    if (mode !== 'destination') {
+        server.registerTool('CF_AppRecentLogs', {
+            description: 'Fetch recent log lines of a Cloud Foundry app from log-cache (like `cf logs --recent`): ' +
+                'app output, staging, router and platform events. Use it to diagnose crashes or failed starts.',
+            inputSchema: {
+                app_guid: z.string().min(1).describe('GUID of the app'),
+                limit: z.number().int().min(1).max(1000).default(200).describe('Maximum number of log lines (default 200)'),
+                errors_only: z.boolean().default(false).describe('Only return stderr (ERR) lines'),
+            },
+            annotations: { readOnlyHint: true },
+        }, async ({ app_guid, limit, errors_only }) => {
+            try {
+                const logCache = (await cfRoot()).log_cache?.href;
+                if (!logCache) throw new Error('This CF deployment does not advertise a log-cache endpoint.');
+                const url = `${logCache.replace(/\/+$/, '')}/api/v1/read/${encodeURIComponent(app_guid)}` +
+                    `?envelope_types=LOG&descending=true&limit=${limit}`;
+                const res = await fetch(url, { headers: { authorization: `Bearer ${session.accessToken}` } });
+                if (!res.ok) throw new Error(`log-cache request failed: ${res.status} ${await res.text()}`);
+                const batch = (await res.json()).envelopes?.batch ?? [];
+                const lines = batch
+                    .filter((e) => e.log && (!errors_only || e.log.type === 'ERR'))
+                    .reverse()
+                    .map((e) => {
+                        const time = new Date(Number(BigInt(e.timestamp) / 1000000n)).toISOString();
+                        const source = `${e.tags?.source_type ?? '?'}/${e.instance_id ?? '0'}`;
+                        const message = Buffer.from(e.log.payload ?? '', 'base64').toString('utf-8').trimEnd();
+                        return `${time} [${source}] ${e.log.type ?? 'OUT'} ${message}`;
+                    });
+                return text(lines.length ? lines.join('\n') : 'No recent log lines.');
+            } catch (error) {
+                return fail(error);
+            }
+        });
+    }
+}
 
 const { start } = await import('odata-mcp-proxy');
-await start();
+await start({ registerExtras });
