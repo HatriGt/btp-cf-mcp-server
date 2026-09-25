@@ -1,59 +1,231 @@
 # BTP CF MCP Server
 
-An MCP (Model Context Protocol) server for the Cloud Foundry V3 API on SAP BTP, powered by [odata-mcp-proxy](https://www.npmjs.com/package/odata-mcp-proxy). It exposes the CF V3 API as MCP tools, allowing AI assistants like Claude to manage your Cloud Foundry landscape through natural language.
+[![npm version](https://img.shields.io/npm/v/btp-cf-mcp-server.svg)](https://www.npmjs.com/package/btp-cf-mcp-server)
+[![CI](https://github.com/HatriGt/btp-cf-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/HatriGt/btp-cf-mcp-server/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-The entire server is defined through a single JSON config file -- no custom code required.
+A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that gives AI assistants access to the
+**Cloud Foundry V3 API on SAP BTP**. It lets you inspect, troubleshoot and manage your CF landscape by asking in
+plain language: apps, processes, services, routes, orgs, spaces, quotas and more.
 
-## Quick Start (local, stdio)
+It runs locally as a stdio server and signs in with your existing `cf login`, so there's nothing to deploy and no
+BTP services to provision. You can also host it on BTP Cloud Foundry for a team.
 
-You don't need a BTP deployment. Your MCP client runs the server from npm as a
-local process, and it signs in to Cloud Foundry with your `cf` CLI login.
+```text
+You:     Why is web-app in my dev space not starting?
+Claude:  → CF_AppSummary { app: "web-app" }        1 of 2 instances CRASHED ("exited with status 1")
+         → CF_AppRecentLogs { app: "web-app", errors_only: true }
+           Error: connect ECONNREFUSED 10.0.2.15:5432
+         The app crashes on startup because it can't reach its PostgreSQL database. The service
+         instance "my-db" is bound, but …
+```
 
-**Requires:** Node.js 20+ and the [cf CLI](https://github.com/cloudfoundry/cli).
+---
 
-1. Log in to Cloud Foundry once. The server refreshes the token after that.
+## Contents
 
-   ```bash
-   cf login -a https://api.cf.eu10.hana.ondemand.com --sso
-   ```
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Client setup](#client-setup)
+- [Tools](#tools)
+- [Authentication](#authentication)
+- [Configuration reference](#configuration-reference)
+- [How it works](#how-it-works)
+- [Hosting on SAP BTP](#hosting-on-sap-btp)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Security](#security)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
 
-2. Add the server to your MCP client.
+---
 
-   **Claude Code**
+## Features
 
-   ```bash
-   claude mcp add btp-cf -- npx -y btp-cf-mcp-server
-   ```
+- **Zero-setup local mode.** Reuses your `cf login` session, including SSO, and refreshes the token automatically.
+- **The full CF V3 API.** 28 resource types across apps, services, networking, orgs and spaces, platform and quotas.
+- **Task-level tools.** `CF_AppSummary` (like `cf app`) and `CF_AppRecentLogs` (like `cf logs --recent`) answer
+  common questions in one call and accept app names as well as GUIDs.
+- **Context-efficient.** Progressive tool discovery exposes 34 tools instead of 120, and responses are compacted
+  (about 74% smaller for typical list results).
+- **Fast.** Starts in about 0.4 s, pools HTTP connections, and fetches independent resources in parallel.
+- **Clear errors.** CF error titles and details reach the model, so it can correct itself. Asynchronous operations
+  return the job URL to poll.
+- **Local or hosted.** Run it as a local stdio process, or deploy it to BTP Cloud Foundry with XSUAA-protected HTTP.
 
-   **Claude Desktop** (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and similar clients:
+## Quick start
 
-   ```json
-   {
-     "mcpServers": {
-       "btp-cf": {
-         "command": "npx",
-         "args": ["-y", "btp-cf-mcp-server"],
-         "env": { "LOG_LEVEL": "warn" }
-       }
-     }
-   }
-   ```
+**Prerequisites:** [Node.js](https://nodejs.org) 20 or later and the
+[Cloud Foundry CLI](https://github.com/cloudfoundry/cli#downloads).
 
-   On macOS, Claude Desktop doesn't inherit your shell `PATH`. If it reports that
-   `npx` or `cf` isn't found, use the full path to `npx` as `command` and add
-   `"CF_CLI_PATH": "/opt/homebrew/bin/cf"` (from `which cf`) to `env`.
+**1. Log in to Cloud Foundry.** Do this once; the server keeps the session fresh after that.
 
-The tools act with the permissions of the CF user who is logged in.
+```bash
+cf login -a https://api.cf.eu10.hana.ondemand.com --sso
+cf target -o <org> -s <space>     # optional: sets the default space for app names
+```
 
-### Authentication modes
+**2. Add the server to your MCP client.** For example, in Claude Code:
 
-Choose a mode with `CF_AUTH_MODE`:
+```bash
+claude mcp add btp-cf -- npx -y btp-cf-mcp-server
+```
 
-| Mode | How it authenticates | Needs |
-|------|----------------------|-------|
-| `cli` (default) | Reuses your `cf login` session through `cf oauth-token` (works with `--sso`) | `cf` CLI logged in; the API endpoint comes from `cf target` unless `CF_API_URL` is set |
-| `password` | OAuth2 password grant against CF UAA, using the public `cf` client | `CF_API_URL`, `CF_USERNAME`, `CF_PASSWORD` (a user without 2FA, such as a technical user) |
-| `destination` | BTP Destination service, as in the hosted setup | a `default-env.json` with the service bindings in the package directory |
+**3. Ask a question.** For example: *"List the apps in my space and their state"* or *"Which service instances
+have no bindings?"*
+
+## Client setup
+
+All clients start the server the same way: the command `npx -y btp-cf-mcp-server`, with optional
+[environment variables](#configuration-reference).
+
+<details open>
+<summary><b>Claude Code</b></summary>
+
+```bash
+claude mcp add btp-cf -- npx -y btp-cf-mcp-server
+
+# with options
+claude mcp add btp-cf -e CF_TOOLS=all -- npx -y btp-cf-mcp-server
+```
+
+</details>
+
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+Edit `claude_desktop_config.json` (**Settings → Developer → Edit Config**):
+
+```json
+{
+  "mcpServers": {
+    "btp-cf": {
+      "command": "npx",
+      "args": ["-y", "btp-cf-mcp-server"]
+    }
+  }
+}
+```
+
+On macOS, Claude Desktop doesn't inherit your shell's `PATH`. If `npx` or `cf` can't be found, use absolute paths:
+set `"command"` to the output of `which npx`, and add `"env": { "CF_CLI_PATH": "/opt/homebrew/bin/cf" }`.
+
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+Add to `~/.cursor/mcp.json` (global) or `.cursor/mcp.json` (per project):
+
+```json
+{
+  "mcpServers": {
+    "btp-cf": {
+      "command": "npx",
+      "args": ["-y", "btp-cf-mcp-server"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>VS Code (GitHub Copilot)</b></summary>
+
+Add to `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "btp-cf": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "btp-cf-mcp-server"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><b>Faster startup: global install</b></summary>
+
+`npx` checks the registry on each launch. For the fastest startup, install globally and use the binary directly:
+
+```bash
+npm install -g btp-cf-mcp-server
+claude mcp add btp-cf -- btp-cf-mcp-server
+```
+
+</details>
+
+## Tools
+
+### Cloud Foundry tools
+
+Task-oriented tools that combine several API calls. Tools that take an `app` accept a name or a GUID. Names are
+resolved in `space_guid` if you pass one, and otherwise in the space targeted with `cf target`.
+
+| Tool | Description |
+|------|-------------|
+| `CF_Target` | The API endpoint, the signed-in user, and the targeted org and space, with GUIDs |
+| `CF_AppSummary` | State, org and space, instances with live CPU, memory and disk usage, routes, bound services, buildpacks and stack. Everything is fetched in parallel |
+| `CF_AppRecentLogs` | Recent logs from log-cache, optionally filtered to stderr or by a search term |
+| `CF_AppAction` | Start, stop or restart an app |
+
+### API tools
+
+Every CF V3 resource is available with its list, get, create, update and delete operations, as the API permits.
+Only the most used resources are registered as individual tools (`Apps_list`, `Spaces_get`, …). Everything else
+goes through two stable meta-tools:
+
+| Tool | Description |
+|------|-------------|
+| `search_operations` | Find resources by keyword (for example "service keys" or "quotas") and get their operations, keys and path examples |
+| `execute_operation` | Run an operation on any resource |
+
+Set `CF_TOOLS=all` to register every operation as its own tool instead. See [Tool modes](#tool-modes).
+
+| Category | Resources |
+|----------|-----------|
+| `apps-and-processes` | Apps, Builds, Deployments, Droplets, Packages, Processes, Tasks |
+| `orgs-and-spaces` | Organizations, Spaces, Roles, Users |
+| `services` | ServiceInstances, ServiceCredentialBindings, ServiceOfferings, ServicePlans, ServiceBrokers, ServiceRouteBindings, ServiceUsageEvents |
+| `networking` | Domains, Routes, SecurityGroups |
+| `platform` | Buildpacks, FeatureFlags, Stacks, IsolationSegments, Jobs |
+| `quotas` | OrganizationQuotas, SpaceQuotas |
+
+Paths follow CF V3 REST conventions: `/<guid>` addresses a single resource, and lists take query parameters such as
+`?names=a,b&space_guids=<guid>&per_page=50&page=2&order_by=-created_at`. Actions are POSTs, for example
+`/<guid>/actions/restart` on Apps or `/<guid>/actions/scale` on Processes.
+
+### Tool modes
+
+| `CF_TOOLS` | Registered tools | Count |
+|------------|------------------|------:|
+| `hybrid` (default) | Individual tools for `CF_PINNED_TOOLS`, plus the meta-tools and the CF tools | 34 |
+| `search` | Only the meta-tools and the CF tools | 6 |
+| `all` | Every operation as its own tool, plus the CF tools | 120 |
+
+Hybrid mode stays under the tool limits of clients such as Cursor, and it keeps tool definitions from taking up the
+model's context. The tool list never changes during a session, which keeps prompt caching effective.
+
+## Authentication
+
+The tools act with the permissions of the Cloud Foundry user whose token is used. Choose how the token is obtained
+with `CF_AUTH_MODE`:
+
+| Mode | How it works | Use when |
+|------|--------------|----------|
+| `cli` (default) | Uses the access token cached by the cf CLI while it is valid. When it expires, runs `cf oauth-token`, which refreshes it and keeps the CLI session in sync. | Working interactively. Supports SSO (`cf login --sso`). |
+| `password` | OAuth2 password grant against the CF UAA with the public `cf` client, refreshed with the refresh token. Needs `CF_API_URL`, `CF_USERNAME` and `CF_PASSWORD`. | Automation or a technical user without 2FA. |
+| `destination` | Resolves the `CF_API` destination through the BTP Destination service, like the hosted deployment. Needs a `default-env.json` with the service bindings in the package directory. | Reusing an existing BTP destination. |
+
+If a request is rejected with `401`, the server gets a fresh token and retries once. This covers tokens that were
+revoked or rotated during a session.
 
 Example for password mode:
 
@@ -61,264 +233,151 @@ Example for password mode:
 "env": {
   "CF_AUTH_MODE": "password",
   "CF_API_URL": "https://api.cf.eu10.hana.ondemand.com",
-  "CF_USERNAME": "tech-user@example.com",
-  "CF_PASSWORD": "..."
+  "CF_USERNAME": "cf-automation@example.com",
+  "CF_PASSWORD": "<password>"
 }
 ```
 
-Other optional variables:
+## Configuration reference
 
-| Variable | Purpose |
-|----------|---------|
-| `ENABLED_API_CATEGORIES` | Load only some tool categories, e.g. `apps-and-processes,orgs-and-spaces` (also: `services`, `networking`, `platform`, `quotas`) |
-| `CF_API_URL` | Override the CF API endpoint |
-| `CF_HOME` | Use a different cf CLI home directory |
-| `CF_CLI_PATH` | Path to the `cf` binary |
-| `LOG_LEVEL` | `error`, `warn`, `info` (default) or `debug`; logs go to stderr |
-| `REQUEST_TIMEOUT` | Request timeout in ms (default 60000) |
-| `CF_TOOLS` | Tool surface: `hybrid` (default), `search` or `all`; see [Tool modes](#tool-modes) |
-| `CF_PINNED_TOOLS` | Entity sets kept as individual tools in hybrid mode (default: `Apps,Processes,Spaces,Organizations,ServiceInstances,Routes`) |
+All settings are environment variables.
 
-### Tool modes
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CF_AUTH_MODE` | `cli` | `cli`, `password` or `destination`. See [Authentication](#authentication) |
+| `CF_API_URL` | `cf target` endpoint | CF API endpoint, e.g. `https://api.cf.eu10.hana.ondemand.com`. Required in `password` mode |
+| `CF_USERNAME` / `CF_PASSWORD` | – | Credentials for `password` mode |
+| `CF_HOME` | home directory | cf CLI home, for when you keep several CLI configurations |
+| `CF_CLI_PATH` | `cf` | Path to the cf binary |
+| `CF_SPACE_GUID` | – | Default space for resolving app names when no space is targeted with the cf CLI |
+| `CF_TOOLS` | `hybrid` | `hybrid`, `search` or `all`. See [Tool modes](#tool-modes) |
+| `CF_PINNED_TOOLS` | `Apps,Processes,Spaces,Organizations,ServiceInstances,Routes` | Resources registered as individual tools in hybrid mode |
+| `CF_COMPACT` | `true` | Removes per-resource `links` and empty `metadata` from responses. Set to `false` for raw CF responses |
+| `ENABLED_API_CATEGORIES` | `all` | Comma-separated [categories](#api-tools) to expose, e.g. `apps-and-processes,services` |
+| `REQUEST_TIMEOUT` | `60000` | Request timeout in milliseconds |
+| `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Logs go to stderr |
 
-If every CF operation were its own tool, you'd get about 116 tools. That uses a lot of
-context and goes over the tool limit of some clients, such as Cursor's ~40. The stdio
-launcher therefore uses the proxy's progressive tool discovery by default:
+## How it works
 
-| `CF_TOOLS` | What gets registered | Tools |
-|------------|----------------------|-------|
-| `hybrid` (default) | Individual tools for the most used entity sets, plus `search_operations` / `execute_operation` for everything else | 33 |
-| `search` | Only the meta-tools and the CF tools below | 5 |
-| `all` | Every operation as its own tool | 119 |
-
-The model uses `search_operations` to find an entity set (for example "service keys"
-or "quotas") and `execute_operation` to call it.
-
-### Cloud Foundry tools
-
-Besides the generic API tools, the stdio launcher adds these tools:
-
-| Tool | What it does |
-|------|--------------|
-| `CF_Target` | The CF API endpoint, the logged-in user, and the org and space targeted with `cf target` (with GUIDs), so "my apps" can be resolved without extra lookups |
-| `CF_AppAction` | Start, stop or restart an app by GUID |
-| `CF_AppRecentLogs` | Recent app logs from log-cache, like `cf logs --recent`, optionally stderr only. Not available in `destination` mode |
-
-### How the stdio launcher works
-
-The package's `stdio.mjs`:
-- starts `odata-mcp-proxy` with the stdio transport and sends all logs to stderr, so stdout carries only JSON-RPC
-- loads the bundled `btp-cf-api-config.json`, whatever directory the client starts it from
-- gets a CF UAA user token and gives it to the proxy as an SAP Cloud SDK environment destination, refreshing it before it expires
-- enables progressive tool discovery and registers the Cloud Foundry tools above
-
-To run it from a clone instead of npm, use `npm install` and then `npm run start:stdio`,
-or point your client at `node /absolute/path/to/stdio.mjs`.
-
-## How It Works
-
-This project uses the `odata-mcp-proxy` npm package, which maps OData/REST services to MCP tools based on a configuration file. You provide a config describing your APIs and entity sets, and the proxy generates the corresponding MCP tools automatically.
-
-```
-AI Assistant (Claude, Cursor, etc.)
-        |
-        | MCP Protocol (HTTP or stdio)
-        v
-  odata-mcp-proxy
-        |
-        | REST + OAuth2 (via BTP Destination Service)
-        v
-  Cloud Foundry V3 API
+```text
+┌────────────────┐  stdio (JSON-RPC)  ┌──────────────────────────────────────────┐  HTTPS  ┌──────────────────┐
+│   MCP client   │ ◄────────────────► │ btp-cf-mcp-server                        │ ──────► │ CF V3 API        │
+│ Claude, Cursor │                    │  ├ odata-mcp-proxy  (tools, discovery)   │         │ log-cache        │
+└────────────────┘                    │  ├ CF client  (keep-alive, retries,      │         └──────────────────┘
+                                      │  │             errors, compaction)       │  token  ┌──────────────────┐
+                                      │  └ token provider (cf CLI / UAA)         │ ◄────── │ cf CLI / CF UAA  │
+                                      └──────────────────────────────────────────┘         └──────────────────┘
 ```
 
-Think of it like the [SAP Application Router](https://www.npmjs.com/package/@sap/approuter) -- a ready-made runtime you configure, not code you write.
+The server is built on [odata-mcp-proxy](https://www.npmjs.com/package/odata-mcp-proxy), which turns the
+declarative API description in [`btp-cf-api-config.json`](btp-cf-api-config.json) into MCP tools. The stdio entry
+point ([`stdio.mjs`](stdio.mjs)) adds what a local Cloud Foundry setup needs:
 
-## Exposed CF V3 APIs
+| Module | Responsibility |
+|--------|----------------|
+| [`lib/auth.mjs`](lib/auth.mjs) | Gets a UAA token from the cf CLI cache, `cf oauth-token` or a password grant, and refreshes it before it expires |
+| [`lib/cf-client.mjs`](lib/cf-client.mjs) | CF-aware HTTP client: connection pooling, one retry with a fresh token after a 401, backoff on 429 and 5xx for idempotent requests, CF error details, job URLs for 202 responses, and response compaction |
+| [`lib/tools.mjs`](lib/tools.mjs) | The `CF_*` tools, app name resolution, and parallel fetching |
 
-The config file (`btp-cf-api-config.json`) exposes the Cloud Foundry V3 API, organized by category:
+stdout is reserved for the MCP protocol; all logging goes to stderr.
 
-### Apps & Processes
+**Performance**, measured against a local mock CF API:
 
-| Tool | Operations | Description |
-|------|-----------|-------------|
-| `Apps` | list, get, create, update, delete | Deploy, manage, start, and stop CF applications |
-| `Builds` | list, get, create | Stage a package into a droplet |
-| `Deployments` | list, get, create | Rolling deployments and canary releases |
-| `Droplets` | list, get, delete | Staged, runnable artifacts produced from builds |
-| `Packages` | list, get, create, delete | Application source code or Docker images for staging |
-| `Processes` | list, get, update | Running instances of an app (web, worker, etc.) |
-| `Tasks` | list, get, create | One-off processes like database migrations or batch jobs |
+| | Before | After |
+|---|---|---|
+| Time to first response on startup | ~850 ms | ~430 ms. The cached token is used without spawning `cf`, and loading the proxy overlaps with getting the token |
+| Connections for 28 API calls | 28 (new TLS handshake per call) | 5 (pooled) |
+| 50-app list response | 106 KB | 28 KB (−74%) |
+| "What's wrong with my app?" | 5+ sequential tool calls | 1–2 calls (`CF_AppSummary`, `CF_AppRecentLogs`) |
 
-### Orgs & Spaces
+## Hosting on SAP BTP
 
-| Tool | Operations | Description |
-|------|-----------|-------------|
-| `Organizations` | list, get, create, update, delete | Top-level containers for spaces, apps, and users |
-| `Spaces` | list, get, create, update, delete | Subdivisions within an org for deploying apps and services |
-| `Roles` | list, get, create, delete | User role assignments (OrgManager, SpaceDeveloper, etc.) |
-| `Users` | list, get, create, update, delete | User accounts in the CF deployment |
+The same configuration can be deployed as a shared, XSUAA-protected HTTP MCP server on SAP BTP Cloud Foundry.
 
-### Services
+1. Create a BTP destination named `CF_API` that points to your CF API endpoint
+   (`https://api.cf.<region>.hana.ondemand.com`) and uses OAuth2 authentication.
+2. Build and deploy the MTA. It provisions the Destination, Connectivity and XSUAA (`application` plan) services:
 
-| Tool | Operations | Description |
-|------|-----------|-------------|
-| `ServiceInstances` | list, get, create, update, delete | Provisioned instances of marketplace services |
-| `ServiceCredentialBindings` | list, get, create, update, delete | Service keys and app bindings for accessing service instances |
-| `ServiceOfferings` | list, get, update, delete | Services available in the marketplace |
-| `ServicePlans` | list, get, update, delete | Pricing/feature tiers for each service offering |
-| `ServiceBrokers` | list, get, create, update, delete | Broker applications that advertise and provision services |
-| `ServiceRouteBindings` | list, get, create, delete | Bind a service instance to a route for request interception |
-| `ServiceUsageEvents` | list, get | Historical record of service instance events for billing/auditing |
+   ```bash
+   npm install
+   npm run build:btp     # mbt build
+   npm run deploy:btp    # cf deploy mta_archives/btp-cf-mcp-server_1.0.0.mtar
+   ```
 
-### Networking
+3. Assign one of the role templates from [`xs-security.json`](xs-security.json) through role collections:
 
-| Tool | Operations | Description |
-|------|-----------|-------------|
-| `Domains` | list, get, create, update, delete | Shared or private domain names used to create routes |
-| `Routes` | list, get, create, update, delete | URL mappings that direct traffic to apps |
-| `SecurityGroups` | list, get, create, update, delete | Egress firewall rules controlling outbound app connectivity |
+   | Role template | Scopes |
+   |---------------|--------|
+   | `MCPViewer` | `read` |
+   | `MCPEditor` | `read`, `write` |
+   | `MCPAdmin` | `read`, `write`, `admin` |
 
-### Platform
+4. Connect your client to `https://<app-route>/mcp`. OAuth redirect URIs for Claude, Cursor, Microsoft Teams and
+   local tooling are pre-configured in `xs-security.json`.
 
-| Tool | Operations | Description |
-|------|-----------|-------------|
-| `Buildpacks` | list, get, create, update, delete | Runtimes and frameworks for staging applications |
-| `FeatureFlags` | list, get, update | Platform-level toggles for CF features |
-| `Stacks` | list, get, create, update, delete | Root filesystems (OS base images) for running apps |
-| `IsolationSegments` | list, get, create, update, delete | Dedicated compute pools for running apps in isolated Diego cells |
-| `Jobs` | get | Track status of long-running async operations |
+The hosted server uses `odata-mcp-proxy` directly (`npm start`). The stdio-only features, such as the `CF_*` tools,
+discovery mode and the CF client, apply to local use.
 
-### Quotas
+## Troubleshooting
 
-| Tool | Operations | Description |
-|------|-----------|-------------|
-| `OrganizationQuotas` | list, get, create, update, delete | Resource limits (memory, instances, routes, services) for orgs |
-| `SpaceQuotas` | list, get, create, update, delete | Resource limits for individual spaces within an org |
+| Symptom | Fix |
+|---------|-----|
+| `CF API endpoint unknown` | Run `cf login -a <api-endpoint>`, or set `CF_API_URL` |
+| `cf CLI not found` | Install the cf CLI, or set `CF_CLI_PATH` to its absolute path. Claude Desktop on macOS needs this |
+| `cf oauth-token failed … Run cf login` | Your CLI session expired. Run `cf login` again |
+| `No app named "x" in space …` | Target the right space with `cf target -s <space>`, or pass `space_guid` |
+| The client doesn't list the tools you expect | Check `CF_TOOLS`. In the default hybrid mode, less-used resources are reached through `search_operations` / `execute_operation` |
+| The server doesn't start in the client | Run `npx -y btp-cf-mcp-server` in a terminal. Startup errors are printed to stderr |
+| You need more detail | Set `LOG_LEVEL=debug` and check the client's MCP log |
 
-All `_list` tools support query parameters for filtering and pagination (`page`, `per_page`, and entity-specific filters).
-
-## Prerequisites
-
-- **Node.js** 18+ (20+ recommended)
-- **SAP BTP account** with a Cloud Foundry environment
-- **BTP Destination** configured for the CF V3 API (`CF_API`) with OAuth2 authentication
-- **Cloud Foundry CLI** (`cf`) and **MBT Build Tool** (`mbt`) for deployment
-
-## Project Structure
-
-```
-btp-cf-mcp-server/
-├── package.json              # Start script + odata-mcp-proxy dependency
-├── stdio.mjs                 # Local stdio launcher (npm bin: btp-cf-mcp-server)
-├── btp-cf-api-config.json    # API configuration (defines all MCP tools)
-├── mta.yaml                  # BTP Cloud Foundry deployment descriptor
-├── xs-security.json          # XSUAA OAuth2 configuration
-├── default-env.json          # Local dev credentials (gitignored)
-└── LICENSE
-```
-
-## Getting Started
-
-### 1. Install dependencies
+## Development
 
 ```bash
+git clone https://github.com/HatriGt/btp-cf-mcp-server.git
+cd btp-cf-mcp-server
 npm install
+npm test               # end-to-end tests against a mock CF API
+npm run start:stdio    # run the stdio server from source
 ```
 
-### 2. Configure BTP destination
+To use your local checkout in a client, point it at `node /absolute/path/to/btp-cf-mcp-server/stdio.mjs`.
 
-Create a BTP Destination pointing to the Cloud Foundry V3 API:
-
-| Destination | URL |
-|-------------|-----|
-| `CF_API` | `https://api.cf.<region>.hana.ondemand.com` |
-
-The destination should use OAuth2 client credentials authentication.
-
-### 3. Local development
-
-Create a `default-env.json` with your BTP service bindings (XSUAA, Destination, Connectivity) to run locally:
-
-```bash
-npm start
+```text
+btp-cf-mcp-server/
+├── stdio.mjs                 # stdio entry point (npm bin: btp-cf-mcp-server)
+├── lib/
+│   ├── auth.mjs              # UAA token provider
+│   ├── cf-client.mjs         # CF V3 HTTP client
+│   └── tools.mjs             # CF_* tools
+├── btp-cf-api-config.json    # CF V3 resources exposed as MCP tools
+├── test/                     # mock CF API + end-to-end tests (node:test)
+├── mta.yaml                  # BTP deployment descriptor
+└── xs-security.json          # XSUAA configuration for the hosted server
 ```
 
-This runs `odata-mcp-proxy --config btp-cf-api-config.json`.
+**Adding a CF resource:** add an entry to `apis[0].entitySets` in `btp-cf-api-config.json`, with its `urlPath`,
+`keys`, `category`, the allowed `operations`, and a description that includes the filter parameters. It is picked up
+by the individual tools and by discovery.
 
-### 4. Deploy to BTP
-
-```bash
-npm run build:btp     # Build MTA archive
-npm run deploy:btp    # Deploy to Cloud Foundry
-```
-
-The MTA deployment provisions three service instances:
-- **Destination** (lite) -- resolves the CF API endpoint and manages OAuth2 tokens
-- **Connectivity** (lite) -- enables secure backend connectivity
-- **XSUAA** (application) -- handles OAuth2 authentication with role-based access control
+**Releasing:** bump `version` in `package.json`, then publish a GitHub release tagged `v<version>`. The
+[publish workflow](.github/workflows/publish.yml) runs the tests and publishes to npm with provenance. It needs an
+`NPM_TOKEN` repository secret.
 
 ## Security
 
-The XSUAA configuration (`xs-security.json`) defines three role templates:
+- The server can **change and delete** resources: apps, services, routes, spaces, orgs and more, within the
+  permissions of the CF user. Use a user with the minimum roles you need, for example `SpaceAuditor` for read-only
+  work. Review destructive tool calls before approving them in your client.
+- Tokens are held in memory and never written to disk. In `cli` mode, `cf oauth-token` updates the CLI's own config,
+  as the CLI does when you use it.
+- Don't commit `default-env.json` or credentials. Pass `CF_PASSWORD` through your client's secret handling where
+  possible.
 
-| Role | Scopes | Description |
-|------|--------|-------------|
-| `MCPViewer` | read | Read-only access |
-| `MCPEditor` | read, write | Read and write access |
-| `MCPAdmin` | read, write, admin | Full administrative access |
+## Acknowledgements
 
-OAuth2 redirect URIs are pre-configured for Claude.ai, Cursor, Microsoft Teams, and local development.
-
-## Creating Your Own MCP Server
-
-This project demonstrates how easy it is to create a custom MCP server using `odata-mcp-proxy`. To build your own:
-
-1. Create a new project and install the dependency:
-   ```bash
-   mkdir my-mcp-server && cd my-mcp-server
-   npm init -y
-   npm install odata-mcp-proxy
-   ```
-
-2. Add a start script to `package.json`:
-   ```json
-   {
-     "scripts": {
-       "start": "odata-mcp-proxy --config my-api-config.json"
-     }
-   }
-   ```
-
-3. Define your APIs in a config file (`my-api-config.json`):
-   ```json
-   {
-     "server": {
-       "name": "my-mcp-server",
-       "version": "1.0.0",
-       "description": "My custom MCP server"
-     },
-     "apis": [
-       {
-         "name": "my-api",
-         "destination": "MY_BTP_DESTINATION",
-         "pathPrefix": "/api/v1",
-         "csrfProtected": true,
-         "entitySets": [
-           {
-             "entitySet": "Products",
-             "description": "Product catalog",
-             "category": "master-data",
-             "keys": [{ "name": "Id", "type": "string" }],
-             "operations": { "list": true, "get": true, "create": false, "update": false, "delete": false }
-           }
-         ]
-       }
-     ]
-   }
-   ```
-
-4. Add your `mta.yaml`, `xs-security.json`, and BTP Destinations, then deploy. That's it -- no code to write.
+Built on [odata-mcp-proxy](https://www.npmjs.com/package/odata-mcp-proxy) by Wouter Lemaire. The CF V3 API
+configuration originates from [lemaiwo/btp-cf-mcp-server](https://github.com/lemaiwo/btp-cf-mcp-server).
 
 ## License
 
-MIT
+[MIT](LICENSE)

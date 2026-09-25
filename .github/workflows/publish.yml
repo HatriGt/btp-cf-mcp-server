@@ -27,12 +27,7 @@ jobs:
             echo "Release tag ${GITHUB_REF_NAME} does not match package.json version ${PKG_VERSION}"
             exit 1
           fi
-      - name: Smoke test stdio startup
-        run: |
-          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
-            | (cat; sleep 3) \
-            | CF_AUTH_MODE=destination VCAP_SERVICES='{}' timeout 10 node stdio.mjs \
-            | grep -q '"serverInfo"'
+      - run: npm test
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

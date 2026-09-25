@@ -8,6 +8,7 @@
   },
   "files": [
     "stdio.mjs",
+    "lib/",
     "btp-cf-api-config.json",
     "README.md",
     "LICENSE"
@@ -18,6 +19,7 @@
   "scripts": {
     "start": "odata-mcp-proxy --config btp-cf-api-config.json",
     "start:stdio": "node stdio.mjs",
+    "test": "node --test test/*.test.mjs",
     "build:btp": "mbt build",
     "deploy:btp": "cf deploy mta_archives/btp-cf-mcp-server_1.0.0.mtar"
   },
