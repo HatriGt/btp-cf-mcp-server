@@ -146,9 +146,13 @@ describe('btp-mcp-server (cli auth mode)', () => {
             assert.equal(existsSync(cfMarker), true, 'cf oauth-token should be called after the 401');
         });
 
-        test('compacts responses: drops resource links and empty metadata, keeps pagination', async () => {
-            const body = JSON.parse((await server.call('Apps_list', {})).text);
-            assert.ok(body.pagination.first.href, 'pagination links are kept');
+        test('compacts responses: drops resource links, empty metadata and first/last page links', async () => {
+            const { text } = await server.call('Apps_list', {});
+            assert.doesNotMatch(text, /\n/, 'JSON results are minified');
+            const body = JSON.parse(text);
+            assert.equal(body.pagination.first, undefined);
+            assert.equal(body.pagination.last, undefined);
+            assert.ok('next' in body.pagination, 'next page link is kept');
             assert.equal(body.resources.length, 3);
             for (const app of body.resources) {
                 assert.equal(app.links, undefined);

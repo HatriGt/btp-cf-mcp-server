@@ -19,7 +19,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createTokenProvider, readCfCliConfig } from './lib/auth.mjs';
 import { compactProxyClient, createCfClient, routeProxyClient } from './lib/cf-client.mjs';
-import { registerCfTools } from './lib/tools.mjs';
+import { minifyToolResults, registerCfTools } from './lib/tools.mjs';
 
 // ── stdout belongs to JSON-RPC ──────────────────────────────────────────────
 // winston's Console transport writes to console._stdout; point it (and any
@@ -138,6 +138,8 @@ function registerExtras(server, ctx) {
         };
     }
     if (api) registerCfTools(server, { api, mode, apiUrl, tokens });
+    // Last, so it covers the proxy's generated tools and ours alike
+    minifyToolResults(server);
 }
 
 log(`CF API ${apiUrl ?? '(BTP Destination service)'} | auth: ${mode} | tools: ${toolMode}`);

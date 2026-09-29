@@ -252,7 +252,7 @@ All settings are environment variables.
 | `CF_SPACE_GUID` | – | Default space for resolving app names when no space is targeted with the cf CLI |
 | `CF_TOOLS` | `hybrid` | `hybrid`, `search` or `all`. See [Tool modes](#tool-modes) |
 | `CF_PINNED_TOOLS` | `Apps,Processes,Spaces,Organizations,ServiceInstances,Routes` | Resources registered as individual tools in hybrid mode |
-| `CF_COMPACT` | `true` | Removes per-resource `links` and empty `metadata` from responses. Set to `false` for raw CF responses |
+| `CF_COMPACT` | `true` | Removes per-resource `links`, empty `metadata` and the `first`/`last` pagination links from responses. Set to `false` for raw CF responses. JSON tool results are always sent minified |
 | `ENABLED_API_CATEGORIES` | `all` | Comma-separated [categories](#api-tools) to expose, e.g. `apps-and-processes,services` |
 | `REQUEST_TIMEOUT` | `60000` | Request timeout in milliseconds |
 | `LOG_LEVEL` | `info` | `error`, `warn`, `info` or `debug`. Logs go to stderr |
